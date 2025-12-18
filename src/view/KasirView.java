@@ -26,7 +26,8 @@ public class KasirView {
             "5. Lihat Status Pesanan",
             "6. Batalkan Item",
             "7. Lihat Menu",
-            "8. Logout"
+            "8. Lihat Meja Aktif",
+            "9. Logout"
         };
         
         while (true) {
@@ -50,7 +51,8 @@ public class KasirView {
                 case '5': lihatStatusPesanan(); break;
                 case '6': batalkanItem(); break;
                 case '7': lihatMenu(); break;
-                case '8': 
+                case '8': lihatMejaAktif(); break;
+                case '9':
                     JOptionPane.showMessageDialog(null, "Logout berhasil!");
                     return;
             }
@@ -154,5 +156,10 @@ public class KasirView {
             sb.append("\n\n");
         }
         JOptionPane.showMessageDialog(null, sb.toString(), "Menu", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void lihatMejaAktif() {
+        String result = controller.getDaftarMejaAktif();
+        JOptionPane.showMessageDialog(null, result, "Meja Aktif", JOptionPane.INFORMATION_MESSAGE);
     }
 }

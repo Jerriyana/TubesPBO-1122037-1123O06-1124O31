@@ -44,6 +44,14 @@ public class KokiController {
         return hasil;
     }
 
+    /**
+     * Mengembalikan list antrian masakan untuk kebutuhan view (misalnya dropdown
+     * pemilihan item).
+     */
+    public List<ItemPesanan> getAntrianMasakanList() {
+        return pesananRepo.getAntrianMasakan();
+    }
+
     // Fitur 2: Update Status Masakan
     public String updateStatusMasakan(String idItem, String statusBaru) {
         List<Pesanan> allPesanan = pesananRepo.getAllPesanan();
@@ -67,6 +75,13 @@ public class KokiController {
             return "Item dengan ID " + idItem + " tidak ditemukan!";
         }
 
+        String currentStatus = targetItem.getStatusItem();
+
+        // Jika sudah siap, tidak boleh diubah lagi
+        if ("Siap".equals(currentStatus)) {
+            return "Item sudah berstatus Siap dan tidak dapat diubah lagi.";
+        }
+
         String[] validStatus = { "Menunggu", "Dimasak", "Siap" };
         boolean valid = false;
         for (String s : validStatus) {
@@ -79,6 +94,20 @@ public class KokiController {
 
         if (!valid) {
             return "Status tidak valid! Gunakan: Menunggu, Dimasak, atau Siap";
+        }
+
+        // Aturan transisi:
+        // Menunggu -> Dimasak
+        // Dimasak -> Siap
+        // Tidak boleh kembali ke Menunggu dan tidak boleh lompat Menunggu -> Siap
+        if ("Menunggu".equals(currentStatus) && "Siap".equals(statusBaru)) {
+            return "Transisi tidak valid! Dari Menunggu hanya boleh ke Dimasak.";
+        }
+        if ("Dimasak".equals(currentStatus) && "Menunggu".equals(statusBaru)) {
+            return "Transisi tidak valid! Dari Dimasak hanya boleh ke Siap.";
+        }
+        if (currentStatus.equals(statusBaru)) {
+            return "Status sudah " + currentStatus + ".";
         }
 
         targetItem.setStatusItem(statusBaru);

@@ -99,6 +99,19 @@ public class KasirController {
         if (pesanan == null) {
             return "Tidak ada pesanan aktif untuk meja " + noMeja + "!";
         }
+
+        // Cegah pembayaran jika masih ada item yang belum berstatus "Siap"
+        boolean semuaSiap = true;
+        for (ItemPesanan item : pesanan.getListPesananItem()) {
+            if (!"Siap".equals(item.getStatusItem())) {
+                semuaSiap = false;
+                break;
+            }
+        }
+        if (!semuaSiap) {
+            return "Masih ada item yang belum berstatus SIAP.\n"
+                    + "Silakan selesaikan proses di dapur terlebih dahulu sebelum melakukan pembayaran.";
+        }
         
         double total = pesanan.hitungTotal();
         
@@ -177,5 +190,25 @@ public class KasirController {
     
     public List<Menu> getMenuAktif() {
         return menuRepo.getMenuAktif();
+    }
+
+    // Fitur tambahan: melihat daftar meja dengan pesanan aktif
+    public String getDaftarMejaAktif() {
+        StringBuilder sb = new StringBuilder("=== DAFTAR MEJA DENGAN PESANAN AKTIF ===\n\n");
+        List<Pesanan> semua = pesananRepo.getAllPesanan();
+        boolean ada = false;
+        for (Pesanan p : semua) {
+            if ("Aktif".equals(p.getStatusPesanan())) {
+                ada = true;
+                sb.append("Meja ").append(p.getNoMeja())
+                  .append(" - ID: ").append(p.getIdPesanan())
+                  .append(" - Status Bayar: ").append(p.getStatusPesanan())
+                  .append("\n");
+            }
+        }
+        if (!ada) {
+            sb.append("Belum ada pesanan aktif.\n");
+        }
+        return sb.toString();
     }
 }

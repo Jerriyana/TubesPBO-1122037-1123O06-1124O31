@@ -5,6 +5,7 @@ import model.Koki;
 import model.repository.BahanBakuRepository;
 import model.repository.PesananRepository;
 import model.BahanBaku;
+import model.ItemPesanan;
 
 public class KokiView {
     private Koki koki;
@@ -56,15 +57,80 @@ public class KokiView {
     }
     
     private void updateStatusMasakan() {
-        String idItem = JOptionPane.showInputDialog("ID Item Pesanan:");
-        String[] statusOptions = {"Menunggu", "Dimasak", "Siap"};
-        String status = (String) JOptionPane.showInputDialog(null, "Pilih Status Baru:", "Update Status",
-            JOptionPane.QUESTION_MESSAGE, null, statusOptions, statusOptions[1]);
-        
-        if (idItem != null && status != null) {
-            String result = controller.updateStatusMasakan(idItem, status);
-            JOptionPane.showMessageDialog(null, result);
+        // Ambil antrian untuk ditampilkan sebagai pilihan, supaya koki tidak perlu
+        // menghafal ID secara manual
+        java.util.List<ItemPesanan> antrian = controller.getAntrianMasakanList();
+        if (antrian.isEmpty()) {
+            JOptionPane.showMessageDialog(null, "Tidak ada antrian masakan saat ini.");
+            return;
         }
+
+        String[] itemOptions = new String[antrian.size()];
+        for (int i = 0; i < antrian.size(); i++) {
+            ItemPesanan item = antrian.get(i);
+            itemOptions[i] = (i + 1) + ". " + item.getMenu().getNama() + " x" + item.getKuantitas()
+                    + " (Status: " + item.getStatusItem() + ", ID: " + item.getIdItemPesanan() + ")";
+        }
+
+        String selected = (String) JOptionPane.showInputDialog(
+                null,
+                "Pilih item yang akan diupdate:",
+                "Pilih Item Pesanan",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                itemOptions,
+                itemOptions[0]);
+
+        if (selected == null) {
+            // User cancel pemilihan item
+            return;
+        }
+
+        // Cari index berdasarkan prefix "n. " di awal string
+        int dotIndex = selected.indexOf('.');
+        int index = 0;
+        try {
+            index = Integer.parseInt(selected.substring(0, dotIndex)) - 1;
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(null, "Pilihan item tidak valid!");
+            return;
+        }
+
+        if (index < 0 || index >= antrian.size()) {
+            JOptionPane.showMessageDialog(null, "Pilihan item tidak valid!");
+            return;
+        }
+
+        ItemPesanan target = antrian.get(index);
+
+        // Tentukan opsi status yang diperbolehkan berdasarkan status saat ini
+        String currentStatus = target.getStatusItem();
+        String[] statusOptions;
+        if ("Menunggu".equals(currentStatus)) {
+            statusOptions = new String[] { "Dimasak" };
+        } else if ("Dimasak".equals(currentStatus)) {
+            statusOptions = new String[] { "Siap" };
+        } else {
+            JOptionPane.showMessageDialog(null, "Item sudah berstatus Siap dan tidak dapat diubah lagi.");
+            return;
+        }
+
+        String status = (String) JOptionPane.showInputDialog(
+                null,
+                "Status saat ini: " + currentStatus + "\nPilih status baru:",
+                "Update Status",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                statusOptions,
+                statusOptions[0]);
+
+        if (status == null) {
+            // User cancel pemilihan status
+            return;
+        }
+
+        String result = controller.updateStatusMasakan(target.getIdItemPesanan(), status);
+        JOptionPane.showMessageDialog(null, result);
     }
     
     private void cekSisaBahan() {
