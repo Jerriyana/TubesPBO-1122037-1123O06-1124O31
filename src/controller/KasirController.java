@@ -1,23 +1,24 @@
 package controller;
-import model.Menu;
-import model.Pesanan;
-import model.Kasir;
-import model.ItemPesanan;
-import model.repository.MenuRepository;
-import model.repository.PesananRepository;
-import model.repository.PesananRepositoryImpl;
-import model.repository.MenuRepositoryImpl;
+
+import model.*;
+import model.repository.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class KasirController {
     private MenuRepository menuRepo;
     private PesananRepository pesananRepo;
+    private BahanBakuRepository bahanRepo;
+    private KasRepository kasRepo;
     private Kasir kasirLogin;
-    private int pesananCounter = 1;
     
-    public KasirController(MenuRepository menuRepo, PesananRepository pesananRepo, Kasir kasirLogin) {
+    public KasirController(MenuRepository menuRepo, PesananRepository pesananRepo, 
+                          BahanBakuRepository bahanRepo, KasRepository kasRepo, 
+                          Kasir kasirLogin) {
         this.menuRepo = menuRepo;
         this.pesananRepo = pesananRepo;
+        this.bahanRepo = bahanRepo;
+        this.kasRepo = kasRepo;
         this.kasirLogin = kasirLogin;
     }
     
@@ -28,7 +29,8 @@ public class KasirController {
             return "Meja " + noMeja + " sudah memiliki pesanan aktif!";
         }
         
-        String idPesanan = "ORD" + String.format("%03d", pesananCounter++);
+        // Generate ID dari Database
+        String idPesanan = pesananRepo.generateKodePesanan();
         Pesanan pesanan = new Pesanan(idPesanan, noMeja, kasirLogin);
         pesananRepo.addPesanan(pesanan);
         
@@ -50,9 +52,28 @@ public class KasirController {
             return "Menu " + menu.getNama() + " sedang tidak tersedia!";
         }
         
-        String itemId = ((PesananRepositoryImpl)pesananRepo).generateItemId();
+        // VALIDASI STOK (Fitur Baru)
+        // Hanya cek stok jika menu adalah Makanan (Minuman diasumsikan selalu ada/tidak track bahan)
+        if (menu instanceof Makanan) {
+            Makanan makanan = (Makanan) menu;
+            for (BahanMenu bm : makanan.getListBahanDibutuhkan()) {
+                BahanBaku bahan = bahanRepo.getBahanByKode(bm.getBahan().getKodeBahan());
+                double kebutuhan = bm.getJumlahDibutuhkan() * qty;
+                
+                // Cek stok di database
+                if (bahan.getStok() < kebutuhan) {
+                    return "Stok " + bahan.getNamaBahan() + " tidak cukup!\n" +
+                           "Butuh: " + kebutuhan + " " + bahan.getSatuan() + "\n" +
+                           "Tersedia: " + bahan.getStok() + " " + bahan.getSatuan();
+                }
+            }
+        }
+        
+        String itemId = pesananRepo.generateKodeItem();
         ItemPesanan item = new ItemPesanan(itemId, menu, qty, catatan);
-        pesanan.getListPesananItem().add(item);
+        
+        // Simpan ke Database
+        pesananRepo.addItemPesanan(pesanan.getIdPesanan(), item);
         
         return "Item berhasil ditambahkan!\n" + menu.getNama() + " x" + qty;
     }
@@ -100,6 +121,14 @@ public class KasirController {
             return "Tidak ada pesanan aktif untuk meja " + noMeja + "!";
         }
         
+        // VALIDASI: Semua item harus Siap
+        for (ItemPesanan item : pesanan.getListPesananItem()) {
+            if (!item.getStatusItem().equals("Siap")) {
+                return "Tidak bisa bayar! Masih ada pesanan yang belum siap.\n" +
+                       item.getMenu().getNama() + " - Status: " + item.getStatusItem();
+            }
+        }
+        
         double total = pesanan.hitungTotal();
         
         if (uangTunai < total) {
@@ -108,13 +137,19 @@ public class KasirController {
         }
         
         double kembalian = uangTunai - total;
+        
+        // VALIDASI KAS: Cek apakah kas cukup untuk kembalian
+        if (!kasRepo.cekKembalianCukup(kembalian)) {
+            return "Kas tidak cukup untuk kembalian!\n" +
+                   "Kembalian: Rp " + String.format("%,d", (int)kembalian) + "\n" +
+                   "Saldo Kas: Rp " + String.format("%,d", (int)kasRepo.getSaldo());
+        }
+        
         pesanan.setStatusPesanan("Lunas");
         pesananRepo.updatePesanan(pesanan);
         
-        // Update menu terjual
-        for (ItemPesanan item : pesanan.getListPesananItem()) {
-            ((MenuRepositoryImpl)menuRepo).incrementMenuTerjual(item.getMenu().getKodeMenu(), item.getKuantitas());
-        }
+        // Update saldo kas di Database
+        kasRepo.tambahUangMasuk(total, kembalian);
         
         StringBuilder sb = new StringBuilder();
         sb.append("===== PEMBAYARAN BERHASIL =====\n");
@@ -169,10 +204,36 @@ public class KasirController {
             return "Item dengan kode " + kodeMenu + " tidak ditemukan atau sudah diproses!";
         }
         
-        pesanan.getListPesananItem().remove(itemToRemove);
-        pesananRepo.updatePesanan(pesanan);
+        // Hapus dari database
+        pesananRepo.deleteItemPesanan(itemToRemove.getIdItemPesanan());
         
         return "Item berhasil dibatalkan!\n" + itemToRemove.getMenu().getNama();
+    }
+    
+    // Fitur 6 (BARU): Lihat Meja Aktif
+    public String lihatMejaAktif() {
+        List<Pesanan> allPesanan = pesananRepo.getAllPesanan();
+        
+        // Filter pakai Stream API
+        List<Pesanan> aktif = allPesanan.stream()
+            .filter(p -> p.getStatusPesanan().equals("Aktif"))
+            .collect(Collectors.toList());
+        
+        if (aktif.isEmpty()) {
+            return "Tidak ada meja dengan pesanan aktif saat ini.";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append("===== MEJA DENGAN PESANAN AKTIF =====\n\n");
+        
+        for (Pesanan p : aktif) {
+            sb.append("Meja ").append(p.getNoMeja());
+            sb.append(" - ").append(p.getIdPesanan());
+            sb.append(" - Rp ").append(String.format("%,d", (int)p.hitungTotal()));
+            sb.append(" (").append(p.getListPesananItem().size()).append(" item)\n");
+        }
+        
+        return sb.toString();
     }
     
     public List<Menu> getMenuAktif() {
